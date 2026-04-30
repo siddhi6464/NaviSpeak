@@ -35,6 +35,7 @@ Your job is to extract navigation intent from the user's input and record it usi
 Crucially, look out for "Partial Routes". If a user says "I know till X, guide me from there to Y", 
 identify the known_segment ("start to X") and set guidance_start to "X". In this case, set awaiting_confirmation to true, and provide a friendly confirmation_message asking if they want to start navigation from X to Y.
 If a location is very ambiguous or missing entirely (e.g., "take me to the place"), set ambiguous to true and ask a follow_up.
+IMPORTANT: Always append ', Pune, India' to the extracted locations (origin, destination, guidance_start) unless the user explicitly mentions a different city. This ensures the map geocoder finds the local place and not somewhere in another country.
 Always use the record_navigation_intent tool.'''
 
     try:
