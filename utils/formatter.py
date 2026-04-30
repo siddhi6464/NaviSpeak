@@ -47,3 +47,11 @@ Raw Steps:
     except Exception as e:
         # Fallback if Groq fails
         return f"**Route ({route_data.get('distance')}, {route_data.get('duration')}):**\n\n" + raw_text
+
+def get_route_summary(route_data: dict) -> str:
+    """
+    Returns a quick markdown summary of the route for the preview screen.
+    """
+    dist = route_data.get('distance', 'Unknown')
+    dur = route_data.get('duration', 'Unknown')
+    return f"**Route Found!** 🚗\n\n**Distance:** {dist}  |  **Duration:** {dur}"
