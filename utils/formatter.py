@@ -1,5 +1,5 @@
 import re
-from nlp.extractor import get_anthropic_client
+from nlp.extractor import get_groq_client
 
 def format_directions_html(steps: list) -> str:
     """
@@ -14,7 +14,7 @@ def format_directions_html(steps: list) -> str:
 
 def get_conversational_directions(route_data: dict) -> str:
     """
-    Takes route data and uses Claude to summarize it in a conversational tone.
+    Takes route data and uses Groq to summarize it in a conversational tone.
     """
     if not route_data or "error" in route_data:
         return route_data.get("error", "No route data available.")
@@ -33,13 +33,17 @@ Raw Steps:
 {raw_text}
 """
     try:
-        client = get_anthropic_client()
-        response = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=500,
-            messages=[{"role": "user", "content": prompt}]
+        client = get_groq_client()
+        response = client.chat.completions.create(
+            model="llama3-70b-8192",
+            messages=[
+                {"role": "system", "content": "You are a helpful and conversational navigation assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=500
         )
-        return response.content[0].text
+        return response.choices[0].message.content
     except Exception as e:
-        # Fallback if Claude fails
+        # Fallback if Groq fails
         return f"**Route ({route_data.get('distance')}, {route_data.get('duration')}):**\n\n" + raw_text

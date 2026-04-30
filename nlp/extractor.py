@@ -1,13 +1,14 @@
 import os
-from anthropic import Anthropic
+import json
+from groq import Groq
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 
-def get_anthropic_client():
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+def get_groq_client():
+    api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY is not set in the environment.")
-    return Anthropic(api_key=api_key)
+        raise ValueError("GROQ_API_KEY is not set in the environment.")
+    return Groq(api_key=api_key)
 
 class NavigationIntent(BaseModel):
     origin: Optional[str] = Field(None, description="The starting point of the journey. None if not specified.")
@@ -25,9 +26,9 @@ class NavigationIntent(BaseModel):
 
 def extract_intent(user_query: str) -> dict:
     """
-    Given a user query, extract the navigation intent into a structured JSON format.
+    Given a user query, extract the navigation intent into a structured JSON format using Groq.
     """
-    client = get_anthropic_client()
+    client = get_groq_client()
     
     system_prompt = '''You are the intelligent core of NaviSpeak, a conversational navigation assistant.
 Your job is to extract navigation intent from the user's input and record it using the provided tool.
@@ -37,25 +38,31 @@ If a location is very ambiguous or missing entirely (e.g., "take me to the place
 Always use the record_navigation_intent tool.'''
 
     try:
-        response = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=1024,
-            system=system_prompt,
+        response = client.chat.completions.create(
+            model="llama3-70b-8192",
             messages=[
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_query}
             ],
             tools=[{
-                "name": "record_navigation_intent",
-                "description": "Record the extracted navigation intent.",
-                "input_schema": NavigationIntent.model_json_schema()
+                "type": "function",
+                "function": {
+                    "name": "record_navigation_intent",
+                    "description": "Record the extracted navigation intent.",
+                    "parameters": NavigationIntent.model_json_schema()
+                }
             }],
-            tool_choice={"type": "tool", "name": "record_navigation_intent"}
+            tool_choice={"type": "function", "function": {"name": "record_navigation_intent"}},
+            temperature=0,
+            max_tokens=1024
         )
         
-        for block in response.content:
-            if block.type == "tool_use" and block.name == "record_navigation_intent":
-                return block.input
-                
+        message = response.choices[0].message
+        if message.tool_calls:
+            for tool_call in message.tool_calls:
+                if tool_call.function.name == "record_navigation_intent":
+                    return json.loads(tool_call.function.arguments)
+                    
         return {"error": "Failed to extract intent."}
     except Exception as e:
         return {"error": str(e)}
@@ -65,7 +72,7 @@ def handle_confirmation(user_query: str, previous_state: dict) -> dict:
     If the user was awaiting confirmation, this parses their response.
     Returns the updated state.
     """
-    client = get_anthropic_client()
+    client = get_groq_client()
     
     system_prompt = f'''The user was asked: "{previous_state.get('confirmation_message')}"
 Their response is: "{user_query}"
@@ -73,15 +80,20 @@ Did they say yes/confirm or no/cancel?
 Return ONLY a JSON object with a single boolean key "confirmed". Nothing else. Example: {{"confirmed": true}}'''
     
     try:
-        response = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=150,
+        response = client.chat.completions.create(
+            model="llama3-70b-8192",
             messages=[
+                {"role": "system", "content": "You are a helpful assistant that only returns JSON."},
                 {"role": "user", "content": system_prompt}
-            ]
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+            max_tokens=150
         )
-        text = response.content[0].text.lower()
-        is_confirmed = "true" in text or "yes" in text or '"confirmed": true' in text
+        
+        text = response.choices[0].message.content
+        result = json.loads(text)
+        is_confirmed = result.get("confirmed", False)
         
         return {
             "confirmed": is_confirmed,
