@@ -128,6 +128,7 @@ def do_routing(origin_str, dest_str, prefs):
     
     # Transition to preview state
     st.session_state.state = {"status": "preview_route", "route": route}
+    st.rerun()
 
 def process_query(query: str):
     st.session_state.messages.append({"role": "user", "content": query})
