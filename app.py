@@ -8,11 +8,45 @@ from maps.directions import get_route
 from voice.stt import transcribe_audio
 from utils.formatter import get_conversational_directions
 from streamlit_mic_recorder import mic_recorder
+import pydeck as pdk
 
 # Load environment variables
 load_dotenv()
 
 st.set_page_config(page_title="NaviSpeak", page_icon="🗺️", layout="centered")
+
+# --- UI Premium CSS: Glassmorphism & Dark Mode ---
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
+
+.stApp {
+    background: radial-gradient(circle at bottom left, #1b1e2b 0%, #0d1117 100%);
+    color: #e6edf3;
+    font-family: 'Outfit', sans-serif;
+}
+.stChatMessage {
+    background: rgba(255, 255, 255, 0.03) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3) !important;
+    margin-bottom: 16px;
+}
+.stChatInputContainer {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+h1, h2, h3 {
+    background: -webkit-linear-gradient(45deg, #4facfe 0%, #00f2fe 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 600;
+}
+</style>
+""", unsafe_allow_html=True)
 
 st.title("🗺️ NaviSpeak")
 st.markdown("Your Conversational Navigation Assistant. Type or speak your destination!")
@@ -27,6 +61,14 @@ if "state" not in st.session_state:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        # Render map if it exists in history
+        if message.get("map_coords"):
+            coords = message["map_coords"]
+            lats = [c[1] for c in coords]
+            lngs = [c[0] for c in coords]
+            layer = pdk.Layer("PathLayer", data=[{"path": coords, "color": [0, 242, 254]}], get_color="color", width_min_pixels=5, get_path="path")
+            view_state = pdk.ViewState(latitude=sum(lats)/len(lats), longitude=sum(lngs)/len(lngs), zoom=12, pitch=45)
+            st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state))
 
 def do_routing(origin_str, dest_str, prefs):
     if not origin_str or not dest_str:
@@ -56,7 +98,33 @@ def do_routing(origin_str, dest_str, prefs):
         status.update(label="Route ready!", state="complete", expanded=False)
     
     st.markdown(final_text)
-    st.session_state.messages.append({"role": "assistant", "content": final_text})
+    
+    # Render Interactive PyDeck Map
+    polyline_coords = route.get("polyline", {}).get("coordinates", [])
+    if polyline_coords:
+        lats = [c[1] for c in polyline_coords]
+        lngs = [c[0] for c in polyline_coords]
+        center_lat = sum(lats) / len(lats)
+        center_lng = sum(lngs) / len(lngs)
+        
+        layer = pdk.Layer(
+            "PathLayer",
+            data=[{"path": polyline_coords, "color": [0, 242, 254]}],
+            get_color="color",
+            width_min_pixels=5,
+            get_path="path",
+        )
+        view_state = pdk.ViewState(latitude=center_lat, longitude=center_lng, zoom=12, pitch=45)
+        map_deck = pdk.Deck(layers=[layer], initial_view_state=view_state)
+        
+        st.pydeck_chart(map_deck)
+        
+    # Save to history including the map
+    st.session_state.messages.append({
+        "role": "assistant", 
+        "content": final_text, 
+        "map_coords": polyline_coords
+    })
 
 def process_query(query: str):
     st.session_state.messages.append({"role": "user", "content": query})
