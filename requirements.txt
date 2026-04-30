@@ -1,0 +1,7 @@
+streamlit==1.40.0
+anthropic==0.21.0
+googlemaps==4.10.0
+SpeechRecognition==3.10.0
+python-dotenv==1.0.1
+streamlit-mic-recorder==0.0.3
+pydantic==2.5.3
