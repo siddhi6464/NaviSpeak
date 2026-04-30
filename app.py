@@ -6,7 +6,7 @@ from nlp.extractor import extract_intent, handle_confirmation
 from maps.places import resolve_location
 from maps.directions import get_route
 from voice.stt import transcribe_audio
-from utils.formatter import get_conversational_directions
+from utils.formatter import get_conversational_directions, get_route_summary
 from streamlit_mic_recorder import mic_recorder
 import pydeck as pdk
 
@@ -93,11 +93,11 @@ def do_routing(origin_str, dest_str, prefs):
         if not route or "error" in route:
             st.error(route.get("error", "Failed to get route.")); return
             
-        st.write("✨ Formatting directions...")
-        final_text = get_conversational_directions(route)
-        status.update(label="Route ready!", state="complete", expanded=False)
+        st.write("✨ Rendering map...")
+        summary_text = get_route_summary(route)
+        status.update(label="Route ready for preview!", state="complete", expanded=False)
     
-    st.markdown(final_text)
+    st.markdown(summary_text)
     
     # Render Interactive PyDeck Map
     polyline_coords = route.get("polyline", {}).get("coordinates", [])
@@ -122,9 +122,12 @@ def do_routing(origin_str, dest_str, prefs):
     # Save to history including the map
     st.session_state.messages.append({
         "role": "assistant", 
-        "content": final_text, 
+        "content": summary_text, 
         "map_coords": polyline_coords
     })
+    
+    # Transition to preview state
+    st.session_state.state = {"status": "preview_route", "route": route}
 
 def process_query(query: str):
     st.session_state.messages.append({"role": "user", "content": query})
@@ -158,6 +161,20 @@ def process_query(query: str):
                     st.session_state.state = {"status": "idle"}
             return
             
+        # Check if we are in preview mode
+        if st.session_state.state["status"] == "preview_route":
+            if "start" in query.lower() or "yes" in query.lower():
+                route = st.session_state.state["route"]
+                with st.spinner("Generating step-by-step guidance..."):
+                    final_text = get_conversational_directions(route)
+                st.markdown(final_text)
+                st.session_state.messages.append({"role": "assistant", "content": final_text})
+                st.session_state.state = {"status": "idle"}
+                return
+            else:
+                # User typed something else, cancel preview and process as new intent
+                st.session_state.state = {"status": "idle"}
+                
         # Idle state - Extract new intent
         with st.spinner("Understanding..."):
             intent = extract_intent(query)
@@ -185,6 +202,19 @@ def process_query(query: str):
             prefs = intent.get("preferences", {})
             
         do_routing(origin_str, dest_str, prefs)
+
+# Layout for Start Navigation Button
+if st.session_state.state["status"] == "preview_route":
+    st.write("")
+    if st.button("📍 Start Navigation", use_container_width=True, type="primary"):
+        route = st.session_state.state["route"]
+        with st.chat_message("assistant"):
+            with st.spinner("Generating step-by-step guidance..."):
+                final_text = get_conversational_directions(route)
+            st.markdown(final_text)
+            st.session_state.messages.append({"role": "assistant", "content": final_text})
+        st.session_state.state = {"status": "idle"}
+        st.rerun()
 
 # Layout for chat input and microphone
 col1, col2 = st.columns([0.9, 0.1])
