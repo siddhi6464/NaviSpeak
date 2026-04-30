@@ -1,31 +1,42 @@
 import os
-import googlemaps
+import requests
 
-def get_gmaps_client():
-    api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
+def get_ors_key():
+    api_key = os.environ.get("ORS_API_KEY")
     if not api_key:
-        raise ValueError("GOOGLE_MAPS_API_KEY is not set in the environment.")
-    return googlemaps.Client(key=api_key)
+        api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        raise ValueError("ORS_API_KEY is not set in the environment.")
+    return api_key
 
 def resolve_location(location_name: str) -> dict:
-    """
-    Given a fuzzy location name, return its exact coordinates and formatted address.
-    """
     if not location_name:
         return None
         
-    gmaps = get_gmaps_client()
+    api_key = get_ors_key()
+    url = "https://api.openrouteservice.org/geocode/search"
+    params = {
+        "api_key": api_key,
+        "text": location_name,
+        "size": 1
+    }
+    
     try:
-        geocode_result = gmaps.geocode(location_name)
-        if not geocode_result:
+        response = requests.get(url, params=params)
+        data = response.json()
+        
+        if "features" not in data or not data["features"]:
             return {"error": f"Could not find coordinates for {location_name}"}
             
-        location = geocode_result[0]
+        feature = data["features"][0]
+        lng, lat = feature["geometry"]["coordinates"]
+        props = feature["properties"]
+        
         return {
             "name": location_name,
-            "formatted_address": location.get("formatted_address"),
-            "lat": location["geometry"]["location"]["lat"],
-            "lng": location["geometry"]["location"]["lng"]
+            "formatted_address": props.get("label", location_name),
+            "lat": lat,
+            "lng": lng
         }
     except Exception as e:
         return {"error": str(e)}

@@ -39,7 +39,7 @@ Always use the record_navigation_intent tool.'''
 
     try:
         response = client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_query}
@@ -81,7 +81,7 @@ Return ONLY a JSON object with a single boolean key "confirmed". Nothing else. E
     
     try:
         response = client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that only returns JSON."},
                 {"role": "user", "content": system_prompt}

@@ -1,11 +1,13 @@
 import os
-import googlemaps
+import requests
 
-def get_gmaps_client():
-    api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
+def get_ors_key():
+    api_key = os.environ.get("ORS_API_KEY")
     if not api_key:
-        raise ValueError("GOOGLE_MAPS_API_KEY is not set in the environment.")
-    return googlemaps.Client(key=api_key)
+        api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        raise ValueError("ORS_API_KEY is not set in the environment.")
+    return api_key
 
 def get_route(origin: dict, destination: dict, preferences: dict = None) -> dict:
     """
@@ -18,44 +20,56 @@ def get_route(origin: dict, destination: dict, preferences: dict = None) -> dict
     if "error" in destination: return destination
     
     preferences = preferences or {}
-    gmaps = get_gmaps_client()
+    api_key = get_ors_key()
     
-    # Process preferences
-    avoid = []
-    if preferences.get("avoid_tolls"): avoid.append("tolls")
-    if preferences.get("avoid_highways"): avoid.append("highways")
+    # ORS expects coordinates as [longitude, latitude]
+    start_coords = f"{origin['lng']},{origin['lat']}"
+    end_coords = f"{destination['lng']},{destination['lat']}"
     
-    origin_coords = f"{origin['lat']},{origin['lng']}"
-    dest_coords = f"{destination['lat']},{destination['lng']}"
+    url = f"https://api.openrouteservice.org/v2/directions/driving-car"
+    params = {
+        "api_key": api_key,
+        "start": start_coords,
+        "end": end_coords
+    }
+    
+    # Process preferences (ORS supports avoiding tolls, highways)
+    avoid_features = []
+    if preferences.get("avoid_tolls"): avoid_features.append("tollways")
+    if preferences.get("avoid_highways"): avoid_features.append("highways")
+    
+    if avoid_features:
+        params["options"] = f'{{"avoid_features":{str(avoid_features).replace("'", '"')}}}'
     
     try:
-        directions_result = gmaps.directions(
-            origin_coords,
-            dest_coords,
-            mode="driving",
-            avoid="|".join(avoid) if avoid else None,
-            departure_time="now" if preferences.get("avoid_traffic") else None
-        )
+        response = requests.get(url, params=params)
+        data = response.json()
         
-        if not directions_result:
+        if "error" in data:
+            return {"error": data["error"].get("message", "Route error")}
+        if "features" not in data or not data["features"]:
             return {"error": "No route found."}
             
-        route = directions_result[0]
-        legs = route['legs'][0]
+        route = data["features"][0]
+        segments = route["properties"]["segments"][0]
+        
+        # Convert distance to readable format
+        total_dist_km = segments["distance"] / 1000
+        total_dur_min = segments["duration"] / 60
         
         return {
-            "distance": legs['distance']['text'],
-            "duration": legs['duration']['text'],
-            "start_address": legs['start_address'],
-            "end_address": legs['end_address'],
+            "distance": f"{total_dist_km:.1f} km",
+            "duration": f"{int(total_dur_min)} mins",
+            "start_address": origin.get("formatted_address", "Origin"),
+            "end_address": destination.get("formatted_address", "Destination"),
             "steps": [
                 {
-                    "distance": step['distance']['text'],
-                    "duration": step['duration']['text'],
-                    "html_instructions": step['html_instructions']
-                } for step in legs['steps']
+                    "distance": f"{step['distance']} meters",
+                    "duration": f"{step['duration']} seconds",
+                    "html_instructions": step['instruction'] 
+                } for step in segments['steps']
             ],
-            "polyline": route['overview_polyline']['points']
+            "polyline": route['geometry']
         }
     except Exception as e:
         return {"error": str(e)}
