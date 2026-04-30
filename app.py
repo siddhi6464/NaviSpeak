@@ -302,13 +302,13 @@ if st.session_state.state["status"] == "navigating":
 if st.session_state.state["status"] != "navigating":
     col1, col2 = st.columns([0.9, 0.1])
 
-with col1:
-    user_input = st.chat_input("Type your destination...")
+    with col1:
+        user_input = st.chat_input("Type your destination...")
 
-with col2:
-    # Adding some top margin to align the mic button nicely with the chat input
-    st.write("") 
-    audio = mic_recorder(start_prompt="🎙️", stop_prompt="🛑", key="mic")
+    with col2:
+        # Adding some top margin to align the mic button nicely with the chat input
+        st.write("") 
+        audio = mic_recorder(start_prompt="🎙️", stop_prompt="🛑", key="mic")
 
     if user_input:
         process_query(user_input)
